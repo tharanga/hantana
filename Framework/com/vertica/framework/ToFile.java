@@ -1,4 +1,4 @@
-package com.vertica.framework;
+package com.vertica.sdk;
 
 import java.io.BufferedWriter;
 import java.io.FileOutputStream;

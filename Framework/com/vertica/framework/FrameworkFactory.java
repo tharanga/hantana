@@ -1,9 +1,7 @@
 package com.vertica.framework;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
-
-import vertica.framework.DataFormatter;
-import vertica.framework.DestinationFormatter;
 
 import com.vertica.sdk.ColumnTypes;
 import com.vertica.sdk.DestroyInvocation;
@@ -64,6 +62,7 @@ public class FrameworkFactory extends TransformFunctionFactory
         {
                 @Override
                 public void setup(ServerInterface srvInterface, SizedColumnTypes argTypes){
+                	srvInterface.log("IN SETUP");
                         Class<?> tempDataFormatter = null;
                         Class<?> tempDestinationFormatter = null;
                         
@@ -72,41 +71,47 @@ public class FrameworkFactory extends TransformFunctionFactory
                         String tempStr="";
                         ParamReader paramReader = srvInterface.getParamReader();
                         
+                        
+                        
                         //Get parameters from select statement
-                        userInputDataFormatter = paramReader.getString("DataFormatter").str();
-                        userInputDestinationFormatter = paramReader.getString("DestinationFormatter").str();
-                        
                         try{
-                                tempDataFormatter = Class.forName("com.vertica.framework." + userInputDataFormatter);
-                                tempDestinationFormatter = Class.forName("com.vertica.framework." + userInputDestinationFormatter);                                                
+                        	userInputDataFormatter = paramReader.getString("DataFormatter").str();
+                        	userInputDestinationFormatter = paramReader.getString("DestinationFormatter").str();
+                        
+                            tempDataFormatter = Class.forName("com.vertica.sdk." + userInputDataFormatter);
+                            tempDestinationFormatter = Class.forName("com.vertica.sdk." + userInputDestinationFormatter);                                                
+	                        
+	                        //Setup formatters
+	                        dataFormatter = (DataFormatter) tempDataFormatter.newInstance();
+	                        destinationFormatter = (DestinationFormatter) tempDestinationFormatter.newInstance();
+	                        
+	                        //Setup any connections needed for destination formatter
+	                        destinationFormatter.setupFormatter();
+	                        
+	                        // Create the first output row to file with column names
+	                        for(int i = 0; i < columnCount-1; i++){
+	                                columnTypes.add(checkType(argTypes.getColumnType(i)));
+	                        }
+	                        
+	                        // Add last column name to list
+	                        columnTypes.add(checkType(argTypes.getColumnType(columnCount-1)));
+	                        
+	                        //Send to DataFormatter
+	                        tempStr = dataFormatter.transformColumnTypes(columnTypes);
+	                        
+	                        //Send to DestinationFormatter
+	                        destinationFormatter.toDestination(tempStr);
                         }catch (ClassNotFoundException e){
-                                throw new IllegalArgumentException("Class was not found: " + e.getMessage());
-                        }catch (IllegalAccessException e){
-                                throw new IllegalArgumentException("Error: " + e.getMessage());
-                        }catch (InstantiationException e){
-                                throw new IllegalArgumentException("Error: " + e.getMessage());
-                        }
+                            throw new IllegalArgumentException("Class was not found: " + e.getMessage());
+	                    }catch (IllegalAccessException e){
+	                        throw new IllegalArgumentException("Error: " + e.getMessage());
+	                    }catch (InstantiationException e){
+	                        throw new IllegalArgumentException("Error: " + e.getMessage());
+	                    }catch (Exception e){
+	                    	throw new IllegalArgumentException("Error: " + e.getMessage());
+	                    }
                         
-                        //Setup formatters
-                        dataFormatter = (DataFormatter) tempDataFormatter.newInstance();
-                        destinationFormatter = (DestinationFormatter) tempDestinationFormatter.newInstance();
                         
-                        //Setup any connections needed for destination formatter
-                        destinationFormatter.setupFormatter();
-                        
-                        // Create the first output row to file with column names
-                        for(int i = 0; i < columnCount-1; i++){
-                                columnTypes.add(checkType(argTypes.getColumnType(i)));
-                        }
-                        
-                        // Add last column name to list
-                        columnTypes.add(checkType(argTypes.getColumnType(columnCount-1)));
-                        
-                        //Send to DataFormatter
-                        tempStr = dataFormatter.transformColumnTypes(columnTypes);
-                        
-                        //Send to DestinationFormatter
-                        destinationFormatter.toDestination(tempStr);
                 }
                 
                 public void destroy (ServerInterface srvInterface, SizedColumnTypes argTypes){ 
@@ -127,10 +132,11 @@ public class FrameworkFactory extends TransformFunctionFactory
                                 record = new ArrayList<String>();
                                 // Write all columns of a row to file, skipping last one so a , is not added to end
                                 for(int i = 0; i < columnCount-1; i++){
-                                        record.add(writeString(inputReader, i));
+                                        //record.add(writeString(inputReader, i));
+                                	ByteBuffer bb = inputReader.getColRef(i);
                                 }
                                 //Write last column
-                                record.add(writeString(inputReader, columnCount-1));
+                                //record.add(writeString(inputReader, columnCount-1));
                                 
                                 //Send to DataFormatter
                                 tempStr = dataFormatter.transformRecord(record);
@@ -198,7 +204,7 @@ public class FrameworkFactory extends TransformFunctionFactory
         public String writeString(PartitionReader data, int column){
                 VTypes columnType = VTypes.valueOf(checkType(data.getTypeMetaData().getColumnType(column)));
                 
-                try{
+                /*try{
                         switch(columnType){
                         case BINARY:
                                 //break;
@@ -232,7 +238,7 @@ public class FrameworkFactory extends TransformFunctionFactory
                 }catch (Exception e){
                         
                 }
-                return "ShouldNotMakeItHere";
+                return "ShouldNotMakeItHere";*/
         }
         
         public enum VTypes {

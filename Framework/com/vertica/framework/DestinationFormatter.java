@@ -1,4 +1,4 @@
-package com.vertica.framework
+package com.vertica.sdk;
 
 public interface DestinationFormatter {
         public Boolean setupFormatter();
