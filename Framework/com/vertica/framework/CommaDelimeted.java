@@ -1,43 +1,37 @@
 package com.vertica.sdk;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 
 public class CommaDelimeted implements DataFormatter{
         
-        //*****************************************************
-        //Is it possible to make these methods return any anything(array, string, integer)
-        //According to whatever programmer wants to return and have framework
-        //Handle this return no matter what it is?
-        //****************************************************
-        
-        public String transformColumnTypes(ArrayList<String> record){
-                StringBuilder str = new StringBuilder();
-                
-                for(int i =0; i <record.size()-1; i++){
-                        str.append(record.get(i) + ",");
-                }
-                
-                //Append last record without comma
-                str.append(record.get(record.size()-1));
-                
-                return str.toString();
-        }
-        
-        public String transformRecord(ArrayList<String> record){                
-                StringBuilder str = new StringBuilder();
-                
-                for(int i =0; i <record.size()-1; i++){
-                        str.append(record.get(i) + ",");
-                }
-                
-                //Append last record without comma
-                str.append(record.get(record.size()-1));
-                
-                return str.toString();
-        }
-        
-        public String transformRecord(){
-                return "class record without parameters";
-        }
-        
+    public byte[] formatAfterColumn(byte[] byteArray){
+    	String insert = ",";
+    	int arraySize = Array.getLength(byteArray);
+    	
+    	byte[] returnArray = new byte[arraySize+insert.length()];
+    	
+    	for(int i = 0; i < arraySize; i++){
+    		returnArray[i] = byteArray[i];
+    	}
+    	for(int i = arraySize; i < (arraySize + insert.length()); i++){
+    		returnArray[i] = (byte)insert.charAt(i - arraySize);
+    	}
+    	return returnArray;
+    }
+    public byte[] formatAfterRecord(byte[] byteArray){
+    	String insert = System.getProperty("line.separator");
+    	
+    	int arraySize = Array.getLength(byteArray);
+    	
+    	byte[] returnArray = new byte[arraySize+insert.length()];
+    	
+    	for(int i = 0; i < arraySize; i++){
+    		returnArray[i] = byteArray[i];
+    	}
+    	for(int i = arraySize; i < (arraySize + insert.length()); i++){
+    		returnArray[i] = (byte)insert.charAt(i - arraySize);
+    	}
+    	return returnArray;
+    }
 }

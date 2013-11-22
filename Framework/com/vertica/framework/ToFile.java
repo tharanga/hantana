@@ -5,28 +5,26 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.lang.reflect.Array;
 
 
 public class ToFile implements DestinationFormatter{
         Writer writer = null;
-        String newLine = System.getProperty("line.separator"); // Get new line character for any system that may be used
         
-        public Boolean setupFormatter(){
+        public void setupFormatter(Object formatter, String encoder){
                 try{
-                        writer = new BufferedWriter(new OutputStreamWriter(
-                          new FileOutputStream("/home/dbadmin/DynamicClass/toFileOutput.txt"), "utf-8"));
+                        writer = new BufferedWriter(new OutputStreamWriter((FileOutputStream)formatter, encoder));
                 } catch (IOException e){
                         e.printStackTrace();
                 }
-                
-                
-                return null;
         }
         
-        public Boolean toDestination(String str){
-                
+        public Boolean toDestination(byte[] byteArray){
                 try{
-                        writer.write(str + newLine);
+                	for(int i = 0; i < Array.getLength(byteArray); i++){
+                		writer.write(byteArray[i]);
+                	}
+                        
                 } catch (Exception e)
                 {
                         e.printStackTrace();

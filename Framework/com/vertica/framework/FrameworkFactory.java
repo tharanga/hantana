@@ -3,17 +3,7 @@ package com.vertica.framework;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 
-import com.vertica.sdk.ColumnTypes;
-import com.vertica.sdk.DestroyInvocation;
-import com.vertica.sdk.ParamReader;
-import com.vertica.sdk.PartitionReader;
-import com.vertica.sdk.PartitionWriter;
-import com.vertica.sdk.ServerInterface;
-import com.vertica.sdk.SizedColumnTypes;
-import com.vertica.sdk.TransformFunction;
-import com.vertica.sdk.TransformFunctionFactory;
-import com.vertica.sdk.UdfException;
-import com.vertica.sdk.VerticaType;
+import com.vertica.sdk.*;
 
 // Break a single string input into individual words (substrings delimited by
 // one or more spaces).
@@ -22,9 +12,11 @@ public class FrameworkFactory extends TransformFunctionFactory
         String newLine = System.getProperty("line.separator"); // Get new line character for any system that may be used
         
         String userInputDataFormatter = "";
+        String userInputStorageFormatter ="";
         String userInputDestinationFormatter = "";
         
         DataFormatter dataFormatter;
+        StorageFormatter storageFormatter;
         DestinationFormatter destinationFormatter;
         
         // Set the number and data types of the columns in the input and output rows.
@@ -55,6 +47,7 @@ public class FrameworkFactory extends TransformFunctionFactory
         {
         // Two Varchar parameters named DataFormatter and DestinationFormatter
                 parameterTypes.addVarchar(100, "DataFormatter");
+                parameterTypes.addVarchar(100, "StorageFormatter");
                 parameterTypes.addVarchar(100, "DestinationFormatter");
         }
         
@@ -64,43 +57,51 @@ public class FrameworkFactory extends TransformFunctionFactory
                 public void setup(ServerInterface srvInterface, SizedColumnTypes argTypes){
                 	srvInterface.log("IN SETUP");
                         Class<?> tempDataFormatter = null;
+                        Class<?> tempStorageFormatter = null;
                         Class<?> tempDestinationFormatter = null;
                         
                         int columnCount = argTypes.getColumnCount();
                         ArrayList<String> columnTypes = new ArrayList<String>();
                         String tempStr="";
                         ParamReader paramReader = srvInterface.getParamReader();
+                        byte[] byteArray;
                         
                         
                         
                         //Get parameters from select statement
                         try{
                         	userInputDataFormatter = paramReader.getString("DataFormatter").str();
+                        	userInputStorageFormatter = paramReader.getString("StorageFormatter").str();
                         	userInputDestinationFormatter = paramReader.getString("DestinationFormatter").str();
                         
                             tempDataFormatter = Class.forName("com.vertica.sdk." + userInputDataFormatter);
+                            tempStorageFormatter = Class.forName("com.vertica.sdk." + userInputStorageFormatter);
                             tempDestinationFormatter = Class.forName("com.vertica.sdk." + userInputDestinationFormatter);                                                
 	                        
 	                        //Setup formatters
 	                        dataFormatter = (DataFormatter) tempDataFormatter.newInstance();
+	                        storageFormatter = (StorageFormatter) tempStorageFormatter.newInstance();
 	                        destinationFormatter = (DestinationFormatter) tempDestinationFormatter.newInstance();
 	                        
 	                        //Setup any connections needed for destination formatter
-	                        destinationFormatter.setupFormatter();
+	                        //String encoder = storageFormatter.formatEncoding;
+	                        String encoder = "utf-8";
+	                        destinationFormatter.setupFormatter(storageFormatter.setupFormatWriter(), encoder);
 	                        
 	                        // Create the first output row to file with column names
 	                        for(int i = 0; i < columnCount-1; i++){
-	                                columnTypes.add(checkType(argTypes.getColumnType(i)));
+	                        	//Get column type and send it to the data formatter
+	                        	byteArray = dataFormatter.formatAfterColumn(checkType(argTypes.getColumnType(i)));
+	                        	//Send byte array to storage formatter to be stored
+	                        	storageFormatter.toWriter(destinationFormatter, byteArray);
 	                        }
 	                        
 	                        // Add last column name to list
-	                        columnTypes.add(checkType(argTypes.getColumnType(columnCount-1)));
-	                        
-	                        //Send to DataFormatter
-	                        tempStr = dataFormatter.transformColumnTypes(columnTypes);
-	                        
-	                        //Send to DestinationFormatter
-	                        destinationFormatter.toDestination(tempStr);
+	                        //Get column type and send it to the data formatter
+                        	byteArray = dataFormatter.formatAfterRecord(checkType(argTypes.getColumnType(columnCount-1)));
+                        	//Send byte array to storage formatter to be stored
+                        	storageFormatter.toWriter(destinationFormatter, byteArray);
+
                         }catch (ClassNotFoundException e){
                             throw new IllegalArgumentException("Class was not found: " + e.getMessage());
 	                    }catch (IllegalAccessException e){
@@ -126,23 +127,20 @@ public class FrameworkFactory extends TransformFunctionFactory
                         int columnCount = inputReader.typeMetaData.getColumnCount();
                         ArrayList<String> record;
                         String tempStr = "";
+                        byte[] byteArray;
                         
                         // Loop over all rows passed in in this partition.
                         do {
                                 record = new ArrayList<String>();
                                 // Write all columns of a row to file, skipping last one so a , is not added to end
                                 for(int i = 0; i < columnCount-1; i++){
-                                        //record.add(writeString(inputReader, i));
-                                	ByteBuffer bb = inputReader.getColRef(i);
+                                    // Send ByteBuffer to formatter to be formatted and stored with false meaning not end of record
+                                	sendToFormatter(inputReader.getColRef(i), false);
+                                	
                                 }
                                 //Write last column
                                 //record.add(writeString(inputReader, columnCount-1));
-                                
-                                //Send to DataFormatter
-                                tempStr = dataFormatter.transformRecord(record);
-                                
-                                //Send to DestinationFormatter
-                                destinationFormatter.toDestination(tempStr);
+                                sendToFormatter(inputReader.getColRef(columnCount -1), false);
 
                                 // Loop until there are no more input rows in partition.
                         } while (inputReader.next());
@@ -179,66 +177,52 @@ public class FrameworkFactory extends TransformFunctionFactory
         srvInterface)
         { return new Framework(); }
         
-        public String checkType(VerticaType column){
+        public byte[] checkType(VerticaType column){
                 if(column.isBinary())
-                        return "BINARY";
+                        return "BINARY".getBytes();
                 if(column.isBool())
-                        return "BOOLEAN";
+                        return "BOOLEAN".getBytes();
                 if(column.isChar())
-                        return "CHAR";
+                        return "CHAR".getBytes();
                 if(column.isDate())
-                        return "DATE";
+                        return "DATE".getBytes();
                 if(column.isFloat())
-                        return "FLOAT";
+                        return "FLOAT".getBytes();
                 if(column.isInt())
-                        return "INTEGER";
+                        return "INTEGER".getBytes();
                 if(column.isTimestamp())
-                        return "TIMESTAMP";
+                        return "TIMESTAMP".getBytes();
                 if(column.isVarbinary())
-                        return "VARBINARY";
+                        return "VARBINARY".getBytes();
                 if(column.isVarchar())
-                        return "VARCHAR";
-                return "UNKNOWNTYPE";
+                        return "VARCHAR".getBytes();
+                return "UNKNOWNTYPE".getBytes();
         }
         
-        public String writeString(PartitionReader data, int column){
-                VTypes columnType = VTypes.valueOf(checkType(data.getTypeMetaData().getColumnType(column)));
-                
-                /*try{
-                        switch(columnType){
-                        case BINARY:
-                                //break;
-                        case CHAR:
-                        case VARBINARY:
-                        case VARCHAR:
-                                //getVstring corresponds to the BINARY, CHAR, VARBINARY, VARCHAR types
-                                return data.getVString(column).str();
-                        case BOOLEAN:
-                                if(data.getBoolean(column)){
-                                        return "TRUE";
-                                }else{
-                                        return "FALSE";
-                                }
-                        case DATE:
-                                //Needs test to see if toString returns correct format
-                                return data.getDate(column).toString();
-                        case FLOAT:
-                                //VerticaType only has .isFloat but .get doesn't have float option
-                                //Check to see if properly converts data to string
-                                return String.valueOf(data.getDouble(column));
-                        case INTEGER:
-                                return String.valueOf(data.getLong(column));
-                        case TIMESTAMP:
-                                return data.getTimestamp(column).toString();
-                        case UNKNOWNTYPE:
-                                return "UNKNOWNTYPE";
-                        default:
-                                return "NOCASEFORTYPE";
-                        }
-                }catch (Exception e){
-                        
-                }
-                return "ShouldNotMakeItHere";*/
+        public void sendToFormatter(ByteBuffer bb, Boolean endRecord){
+        	int bufferSize = 8; //For now we'll just read 8 bytes at a time from buffer
+            byte[] byteArray = new byte[bufferSize];
+            
+            while(bb.remaining()>=bufferSize){ //While the ByteBuffer still has eough bytes to fill byteArray
+            	bb.get(byteArray, 0, bufferSize);
+            	destinationFormatter.toDestination(byteArray);
+            }
+            //Send the rest of buffer if any is left
+            if (bb.remaining() != 0){
+            	byteArray = new byte[bb.remaining()];
+            	bb.get(byteArray, 0, bb.remaining());
+            	
+            	if(endRecord){
+            		//End of record so send to formatAfterRecord
+            		byteArray = dataFormatter.formatAfterRecord(byteArray);
+            	}else{
+            		//End of column so send to formatAfterColumn
+            		byteArray = dataFormatter.formatAfterColumn(byteArray);
+            	}
+            	
+            	//Send formatted data to be stored
+            	storageFormatter.toWriter(destinationFormatter, byteArray);
+            }
         }
         
         public enum VTypes {
