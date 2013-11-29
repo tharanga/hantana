@@ -1,6 +1,7 @@
 package com.vertica.framework;
 
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.util.ArrayList;
 
 import com.vertica.sdk.*;
@@ -66,14 +67,13 @@ public class FrameworkFactory extends TransformFunctionFactory
                         ParamReader paramReader = srvInterface.getParamReader();
                         byte[] byteArray;
                         
-                        
-                        
-                        //Get parameters from select statement
                         try{
+                        	//Get parameters from select statement
                         	userInputDataFormatter = paramReader.getString("DataFormatter").str();
                         	userInputStorageFormatter = paramReader.getString("StorageFormatter").str();
                         	userInputDestinationFormatter = paramReader.getString("DestinationFormatter").str();
                         
+                        	//Find classes for the parameters given
                             tempDataFormatter = Class.forName("com.vertica.sdk." + userInputDataFormatter);
                             tempStorageFormatter = Class.forName("com.vertica.sdk." + userInputStorageFormatter);
                             tempDestinationFormatter = Class.forName("com.vertica.sdk." + userInputDestinationFormatter);                                                
@@ -83,22 +83,20 @@ public class FrameworkFactory extends TransformFunctionFactory
 	                        storageFormatter = (I_StorageFormatter) tempStorageFormatter.newInstance();
 	                        storageTarget = (I_StorageTarget) tempDestinationFormatter.newInstance();
 	                        
-	                        //Setup any connections needed for the storage formatter to use the storage target.
+	                        //Link the data formatter to storage formatter so it can use storage formatter.
+	                        dataFormatter.setupFormatter(storageFormatter);
+	                        //Link the storage formatter to the storage target so it can use the storage target.
 	                        storageFormatter.setupFormatWriter(storageTarget);
 	                        
 	                        // Send as the first row to storage the column types that are being stored
 	                        for(int i = 0; i < columnCount-1; i++){
-	                        	//Get column type and send it to the data formatter
-	                        	byteArray = dataFormatter.formatAfterColumn(checkType(argTypes.getColumnType(i)));
-	                        	//Send byte array to storage formatter to be stored
-	                        	storageFormatter.writeToTarget(byteArray);
+	                        	//Get column type and send it to the data formatter to have it stored in storage target
+	                        	dataFormatter.formatColumnType(checkType(argTypes.getColumnType(i)));
 	                        }
 	                        
 	                        // Add last column name to list
-	                        //Get column type and send it to the data formatter
-                        	byteArray = dataFormatter.formatAfterRecord(checkType(argTypes.getColumnType(columnCount-1)));
-                        	//Send byte array to storage formatter to be stored
-                        	storageFormatter.writeToTarget(byteArray);
+	                        //Get column type and send it to the data formatter to have it stored in storage target
+                        	dataFormatter.formatColumnTypeLast(checkType(argTypes.getColumnType(columnCount-1)));
 
                         }catch (ClassNotFoundException e){
                             throw new IllegalArgumentException("Class was not found: " + e.getMessage());
@@ -124,57 +122,55 @@ public class FrameworkFactory extends TransformFunctionFactory
                 PartitionWriter outputWriter) throws UdfException, DestroyInvocation
                 {
                         int columnCount = inputReader.typeMetaData.getColumnCount();
-                        byte[] byteArray = null;
-                        ByteBuffer bb;
+                        ByteBuffer[] bbArray = new ByteBuffer[columnCount];
+                        byte[][] byteArray = new byte[columnCount][];
+                        int[] recordSize = new int[columnCount];
                         
-                        // Loop over all rows passed in in this partition.
-                        do {
-                                // Write all columns of a row to file, skipping last one so a , is not added to end
-                                for(int i = 0; i < columnCount-1; i++){
-                                    //Retrieve the columns byte buffer
-                                	bb = inputReader.getColRef(i);
-                                	byteArray = new byte[bb.remaining()];
-                                	//Transfer ByteBuffer to byteArray
-                                	bb.get(byteArray);
-                                	// Send ByteBuffer to formatter to be formatted and stored with false meaning not end of record
-                                	storageFormatter.writeToTarget(byteArray);
-                                	
-                                }
-                                //Write last column
-                                //Retrieve the columns byte buffer
-                            	bb = inputReader.getColRef(columnCount-1);
-                            	byteArray = new byte[bb.remaining()];
-                            	//Transfer ByteBuffer to byteArray
-                            	bb.get(byteArray);
-                            	// Send ByteBuffer to formatter to be formatted and stored with false meaning not end of record
-                            	storageFormatter.writeToTarget(byteArray);
-
-                                // Loop until there are no more input rows in partition.
-                        } while (inputReader.next());
+                        //This iterates for each column, storing its ByteBuffer, record size and creating array to
+                        //temporarily hold each record in the column
+                        for(int i = 0; i < columnCount; i++){
+                        	//Get the ByteBuffers for each column and store them in an array
+                        	bbArray[i] = inputReader.getColRef(i);
+                        	//Get the number of bytes each record would contain in the columns so they can be separated
+                        	recordSize[i] = inputReader.typeMetaData.getColumnType(i).getMaxSize();
+                        	//Create the byte array that will hold each record
+                        	byteArray[i] = new byte[recordSize[i]];
+                        }
+                        
+                        //Check to see if data still in ByteBuffer(Meaning another record still in buffer to write)
+                        //Use index 0 as reference since there should be at least 1 column and when it is empty
+                        //all other ByteBuffers will be empty
+                        while(bbArray[0].remaining() > 0){
+                        	for(int i = 0; i < columnCount; i++){
+                        		//Transfer bytes in ByteBuffer bbArray to byteArray
+                        		//This is retrieving the next record in the column for all columns by way of the loop
+                        		//over the array of ByteBuffers in bbArray
+                        		bbArray[i].get(byteArray[i],0,recordSize[i]);
+                        	}
+                        	
+                        	//Send byteArray which contains an array of byte arrays which each contain a column
+                        	//for one particular record to be written
+                        	dataFormatter.writeColumn(byteArray, columnCount);
+                        }
                         
                         //Below commented out code was just a test reading the output file
-                        /*String bin;
+                        /*String bin="notinitialized";
                         String strArray[] = new String[5];
                         
                         try{
                                  FileReader checkOutput = 
-                                          new FileReader("/home/dbadmin/Desktop/toFileOutput.dat"); 
+                                          new FileReader("/home/dbadmin/DynamicClass/toFileOutput1.txt"); 
                                  
                                  BufferedReader br = new BufferedReader(checkOutput);
                                  
                                  bin = br.readLine();
-                                 while(bin != null){
-                                         if(bin.contains("BINARY")){
-                                                 strArray = bin.split(" ");
-                                         }
-                                         bin = br.readLine();
-                                 }
+                                 bin = br.readLine();
                                  
                         }catch(Exception e){
                                 
                         }
                         
-                        outputWriter.setString(0, strArray[1]);
+                        outputWriter.setString(0, bin);
                         outputWriter.next();*/
                 }
         }
@@ -204,70 +200,5 @@ public class FrameworkFactory extends TransformFunctionFactory
                 if(column.isVarchar())
                         return "VARCHAR".getBytes();
                 return "UNKNOWNTYPE".getBytes();
-        }
-        
-        /*public void sendToFormatter(ByteBuffer bb, Boolean endRecord){
-        	int bufferSize = 8; //For now we'll just read 8 bytes at a time from buffer
-            byte[] byteArray = new byte[bufferSize];
-            
-            while(bb.remaining()>=bufferSize){ //While the ByteBuffer still has enough bytes to fill byteArray
-            	bb.get(byteArray, 0, bufferSize);
-            	destinationFormatter.toDestination(byteArray);
-            }
-            //Send the rest of buffer if any is left
-            if (bb.remaining() != 0){
-            	byteArray = new byte[bb.remaining()];
-            	bb.get(byteArray, 0, bb.remaining());
-            	
-            	if(endRecord){
-            		//End of record so send to formatAfterRecord
-            		byteArray = dataFormatter.formatAfterRecord(byteArray);
-            	}else{
-            		//End of column so send to formatAfterColumn
-            		byteArray = dataFormatter.formatAfterColumn(byteArray);
-            	}
-            	
-            	//Send formatted data to be stored
-            	storageFormatter.toWriter(destinationFormatter, byteArray);
-            }
-        	/*byte[] byteArray = new byte[bb.remaining()];
-        	int size = bb.remaining();
-        	int countSize = 0;
-        	bb.get(byteArray, 0, bb.remaining());
-        	
-        	for(int i = 0; i < size; i++){
-        		if(byteArray[i] != 0){
-        			countSize++;
-        		}
-        	}
-        	byte[] submitArray = new byte[countSize];
-        	int nextByte = 0;
-        	for(int i = 0; i < size; i++){
-        		if(byteArray[i] != 0){
-        			submitArray[nextByte] = byteArray[i];
-        			nextByte++;
-        		}
-        	}
-        	
-        	if(endRecord){
-        		submitArray = dataFormatter.formatAfterColumn(submitArray);
-        	}else{
-        		submitArray = dataFormatter.formatAfterRecord(submitArray);
-        	}
-        	
-        	storageFormatter.toWriter(destinationFormatter, submitArray);
-        }*/
-        
-        public enum VTypes {
-                BINARY,
-                BOOLEAN,
-                CHAR,
-                DATE,
-                FLOAT,
-                INTEGER,
-                TIMESTAMP,
-                VARBINARY,
-                VARCHAR,
-                UNKNOWNTYPE
         }
 }

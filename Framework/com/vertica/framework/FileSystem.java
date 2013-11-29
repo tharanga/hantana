@@ -10,14 +10,8 @@ public class FileSystem implements I_StorageTarget{
         
         
         public Object setupTargetWriter(String fileName, String fileExtension, String fileEncoding){
-        	
-           /* try{
-            	writer = (Writer) formatter;
-            	//writer = new BufferedWriter(new OutputStreamWriter((FileOutputStream)formatter, encoder));
-            } catch (IOException e){
-                    e.printStackTrace();
-            }*/
             try{
+            	//Create the FileOutputStream that can write to the file system.
             	fileWriter = new FileOutputStream(targetAddress + fileName + "." + fileExtension);
     			Object o = (Object) fileWriter;
     			return o;
@@ -28,6 +22,7 @@ public class FileSystem implements I_StorageTarget{
         public void closeTarget(){
                 
                 try{
+                	//Close the FileOutputStream
                 	fileWriter.close();
                 } catch (Exception e)
                 {
