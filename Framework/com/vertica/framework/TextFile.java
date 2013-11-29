@@ -1,7 +1,7 @@
 package com.vertica.sdk;
 
-import java.io.FileOutputStream;
-import java.io.Writer;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.lang.reflect.Array;
 
 public class TextFile implements I_StorageFormatter{
@@ -9,12 +9,12 @@ public class TextFile implements I_StorageFormatter{
 	String fileExtension = ".txt";
 	String fileEncoding="utf-8";
 	
-	FileOutputStream storageTarget = null;
+	OutputStream storageTarget = null;
 	
 	public void setupFormatWriter(I_StorageTarget target){
 		
 		try{
-			storageTarget = (FileOutputStream) target.setupTargetWriter(fileName, fileExtension, fileEncoding);
+			storageTarget = (OutputStream) target.setupTargetWriter(fileName, fileExtension, fileEncoding);
 		}catch(Exception e){}
 
 	}
@@ -24,9 +24,13 @@ public class TextFile implements I_StorageFormatter{
 		String byteString = new String(byteArray);
 		try{
 			//storageTarget.write(byteString.toCharArray());
-			for(int i = 0; i < Array.getLength(byteArray); i++){
-        		storageTarget.write(byteArray[i]);
-        	}
+			storageTarget.write(byteArray);
 		}catch(Exception e){}
     }
+	
+	public void closeFormatter(){
+		try{
+			storageTarget.close();
+		}catch(Exception e){}
+	}
 }
