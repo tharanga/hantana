@@ -3,7 +3,7 @@ package com.vertica.sdk;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 
-public class CommaDelimeted implements DataFormatter{
+public class CommaDelimeted implements I_DataFormatter{
         
     public byte[] formatAfterColumn(byte[] byteArray){
     	String insert = ",";
