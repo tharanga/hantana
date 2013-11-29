@@ -1,20 +1,18 @@
 package com.vertica.sdk;
 
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.lang.reflect.Array;
+import java.io.PrintStream;
 
 public class TextFile implements I_StorageFormatter{
 	String fileName = "toFileOutput";
 	String fileExtension = ".txt";
 	String fileEncoding="utf-8";
 	
-	OutputStream storageTarget = null;
+	PrintStream storageTarget = null;
 	
 	public void setupFormatWriter(I_StorageTarget target){
 		
 		try{
-			storageTarget = (OutputStream) target.setupTargetWriter(fileName, fileExtension, fileEncoding);
+			storageTarget = (PrintStream) target.setupTargetWriter(fileName, fileExtension, fileEncoding);
 		}catch(Exception e){}
 
 	}
@@ -25,6 +23,7 @@ public class TextFile implements I_StorageFormatter{
 		try{
 			//storageTarget.write(byteString.toCharArray());
 			storageTarget.write(byteArray);
+			
 		}catch(Exception e){}
     }
 	
