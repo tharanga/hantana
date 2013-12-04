@@ -5,6 +5,7 @@ import java.nio.CharBuffer;
 import java.util.ArrayList;
 
 import com.vertica.sdk.*;
+import com.vertica.formatters.*;
 
 // Break a single string input into individual words (substrings delimited by
 // one or more spaces).
@@ -16,9 +17,9 @@ public class FrameworkFactory extends TransformFunctionFactory
         String userInputStorageFormatter ="";
         String userInputDestinationFormatter = "";
         
-        I_DataFormatter dataFormatter;
-        I_StorageFormatter storageFormatter;
-        I_StorageTarget storageTarget;
+        IDataFormatter dataFormatter;
+        IStorageFormatter storageFormatter;
+        IStorageTarget storageTarget;
         
         // Set the number and data types of the columns in the input and output rows.
         @Override
@@ -39,7 +40,7 @@ public class FrameworkFactory extends TransformFunctionFactory
         {                
                 // Set the maximum width of the return column to the width
                 // of the input column and name the output column "Tokens"
-                outputTypes.addVarchar(5, "NoOutput");
+                outputTypes.addFloat("SizeOfEachColumn");
         }
         
         //Define parameters the framework can take
@@ -74,14 +75,14 @@ public class FrameworkFactory extends TransformFunctionFactory
                         	userInputDestinationFormatter = paramReader.getString("DestinationFormatter").str();
                         
                         	//Find classes for the parameters given
-                            tempDataFormatter = Class.forName("com.vertica.sdk." + userInputDataFormatter);
-                            tempStorageFormatter = Class.forName("com.vertica.sdk." + userInputStorageFormatter);
-                            tempDestinationFormatter = Class.forName("com.vertica.sdk." + userInputDestinationFormatter);                                                
+                            tempDataFormatter = Class.forName("com.vertica.formatters." + userInputDataFormatter);
+                            tempStorageFormatter = Class.forName("com.vertica.formatters." + userInputStorageFormatter);
+                            tempDestinationFormatter = Class.forName("com.vertica.formatters." + userInputDestinationFormatter);                                                
 	                        
 	                        //Setup formatters
-	                        dataFormatter = (I_DataFormatter) tempDataFormatter.newInstance();
-	                        storageFormatter = (I_StorageFormatter) tempStorageFormatter.newInstance();
-	                        storageTarget = (I_StorageTarget) tempDestinationFormatter.newInstance();
+	                        dataFormatter = (IDataFormatter) tempDataFormatter.newInstance();
+	                        storageFormatter = (IStorageFormatter) tempStorageFormatter.newInstance();
+	                        storageTarget = (IStorageTarget) tempDestinationFormatter.newInstance();
 	                        
 	                        //Link the data formatter to storage formatter so it can use storage formatter.
 	                        dataFormatter.setupFormatter(storageFormatter);
@@ -133,6 +134,8 @@ public class FrameworkFactory extends TransformFunctionFactory
                         	bbArray[i] = inputReader.getColRef(i);
                         	//Get the number of bytes each record would contain in the columns so they can be separated
                         	recordSize[i] = inputReader.typeMetaData.getColumnType(i).getMaxSize();
+                        	outputWriter.setDouble(0, inputReader.typeMetaData.getColumnType(i).getMaxSize());
+                            outputWriter.next();
                         	//Create the byte array that will hold each record
                         	byteArray[i] = new byte[recordSize[i]];
                         }
@@ -143,8 +146,9 @@ public class FrameworkFactory extends TransformFunctionFactory
                         while(bbArray[0].remaining() > 0){
                         	for(int i = 0; i < columnCount; i++){
                         		//Transfer bytes in ByteBuffer bbArray to byteArray
-                        		//This is retrieving the next record in the column for all columns by way of the loop
-                        		//over the array of ByteBuffers in bbArray
+                        		//This loop is retrieving the next record in all the columns ByteBuffers
+                        		//The record for each column(bbArray) gets the ByteBuffer
+                        		//for the column and puts the next record in the byteArray for its column
                         		bbArray[i].get(byteArray[i],0,recordSize[i]);
                         	}
                         	
@@ -152,6 +156,14 @@ public class FrameworkFactory extends TransformFunctionFactory
                         	//for one particular record to be written
                         	dataFormatter.writeColumn(byteArray, columnCount);
                         }
+                        
+                        //Below commented code just takes the first record and first column and prints writes it.
+                        //Used for testing purposes
+                       /* byteArray = new byte[1][];
+                        recordSize[0] = inputReader.typeMetaData.getColumnType(0).getMaxSize();
+                        byteArray[0] = new byte[recordSize[0]];
+                        bbArray[0].get(byteArray[0],0,recordSize[0]);
+                        dataFormatter.writeColumn(byteArray, 1);/*
                         
                         //Below commented out code was just a test reading the output file
                         /*String bin="notinitialized";
